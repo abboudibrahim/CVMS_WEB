@@ -1,0 +1,103 @@
+.app-container {
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.logout-btn {
+  margin-left: 10px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.tabs-nav {
+  margin-bottom: 20px;
+}
+.tab {
+  margin-right: 10px;
+  padding: 8px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background-color: #eee;
+}
+.tab.active {
+  background-color: #007bff;
+  color: #fff;
+}
+.vouchers-tab {
+  margin-top: 20px;
+}
+.voucher-form {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.voucher-form input,
+.voucher-form select {
+  padding: 5px;
+}
+.invoice-preview {
+  grid-column: span 2;
+  font-weight: bold;
+  align-self: center;
+}
+.add-btn {
+  grid-column: span 2;
+  padding: 8px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.voucher-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+.voucher-table th,
+.voucher-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: center;
+}
+.voucher-table th {
+  background-color: #f4f4f4;
+}
+.archive-btn {
+  padding: 5px 10px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.voucher-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+}
+.login-container {
+  padding: 40px;
+  font-family: sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  margin: auto;
+}
+.login-container input {
+  padding: 8px;
+}
+.login-container button {
+  padding: 8px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
