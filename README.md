@@ -18,7 +18,7 @@ The application runs in the browser and persists data to Firebase Firestore (no 
 - Mounting pipeline: public/index.html → src/index.js → `<App />` (src/App.js)
 - UI composition: Single top-level component (VoucherApp) organizing the UI into tabs (Vouchers, General Settings, Settings, Aging Report). Within the file, UI sections act like sub-components.
 - State management: React useState for authoritative state, useMemo for derived/computed values.
-- Persistence: Firebase Firestore (see src\\firebase.js). Writes vouchers, tax settings, restaurants, airlines, and users; limited reads implemented (e.g., tax fetch, password change). On app load, data is not auto-fetched yet.
+- Persistence: Firebase Firestore (see src\\firebase.js). Reads and writes for vouchers, tax settings, restaurants, airlines, and users. On startup, the app auto-loads data from Firestore and seeds initial defaults when collections are empty (admin user, restaurants, airlines).
 - Styling: Plain CSS via src/App.css (primary styles) and src/styles.css (minimal globals).
 - Networking: Uses Firebase SDK to talk to Firestore; no custom backend.
 
@@ -48,7 +48,7 @@ The application runs in the browser and persists data to Firebase Firestore (no 
     - General Settings: configure taxes (TPS/TVQ), preview invoice line.
     - Settings: manage restaurants, airlines, and users; change password.
     - Aging Report: generate report based on voucher ages.
-  - Cloud persistence via Firebase Firestore; some reads are on-demand (e.g., tax doc fetch) and most lists are currently maintained in-memory during a session.
+  - Cloud persistence via Firebase Firestore; data is auto-loaded from Firestore on startup and kept in component state; writes occur on user actions.
   - CSV export via a small utility.
   - Basic authentication and roles (admin/user); in-memory login; Firebase Auth not used.
 - src/App.css, src/styles.css
@@ -114,12 +114,12 @@ The application runs in the browser and persists data to Firebase Firestore (no 
 
 ## Known Limitations
 - Single-file App component increases complexity as features grow.
-- No server-side business logic; Firestore is used but data fetching on app load is limited (most lists are session-only until refresh logic is added).
+- No server-side business logic; data loads from Firestore on startup but there are no real-time listeners or offline persistence yet.
 - Authentication is client-only; passwords are stored in Firestore in plaintext (demo-only).
 
 ## Project Status
-- Working demo with Firestore-backed writes (and selected reads) and CSV export.
-- Ready for adding initial data fetching from Firestore, modular refactoring, and secure authentication.
+- Working demo with Firestore-backed reads and writes, startup auto-loading of data, and CSV export.
+- First-run seeding: if Firestore collections are empty, the app seeds a default admin user (admin/Admin123), initial restaurants and airlines. Subsequent starts load persisted data.
 
 
 ## Getting Started
@@ -144,9 +144,12 @@ Create a production build:
 - Ensure you have a Firebase project and Firestore enabled (in Test mode for local development).
 - Update src\firebase.js with your Firebase config (projectId, apiKey, etc.).
 - Recommended: move the config to environment variables for production and set restrictive Firestore security rules.
-- Collections used by the app will be created as you use the UI:
-  - tax: click "Save Tax Settings" to create/update the tax doc.
-  - vouchers, restaurants, airlines, users: created when you add items via the app.
+- Collections used by the app:
+  - On first run, if collections are empty, the app seeds:
+    - users: default admin (admin/Admin123) for demo login.
+    - restaurants and airlines: initial sample values.
+  - On startup, the app auto-loads vouchers, restaurants, airlines, users, and tax settings from Firestore.
+  - To create/update tax settings explicitly, use "Save Tax Settings" in General Settings.
 
 ### Troubleshooting install issues
 If you previously saw an ERESOLVE error related to typescript and react-scripts:

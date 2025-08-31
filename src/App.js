@@ -53,6 +53,7 @@ export default function VoucherApp() {
   const [archivedVouchers, setArchivedVouchers] = useState([]);
   const [selectedVouchers, setSelectedVouchers] = useState([]);
   const [activeTab, setActiveTab] = useState(TABS.VOUCHERS);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
@@ -72,6 +73,89 @@ export default function VoucherApp() {
   ]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+
+  // Initial load from Firestore with seeding when empty
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        // USERS
+        const usersSnap = await getDocs(collection(db, "users"));
+        let usersList = [];
+        if (usersSnap.empty) {
+          const defaultAdmin = { username: "admin", password: "Admin123", role: "admin" };
+          await addDoc(collection(db, "users"), defaultAdmin);
+          usersList = [defaultAdmin];
+        } else {
+          usersList = usersSnap.docs.map((d) => d.data());
+        }
+        if (isMounted) setUsers(usersList);
+
+        // RESTAURANTS
+        const restSnap = await getDocs(collection(db, "restaurants"));
+        let restList = [];
+        if (restSnap.empty) {
+          for (const r of INITIAL_RESTAURANTS) {
+            await addDoc(collection(db, "restaurants"), { name: r });
+          }
+          restList = INITIAL_RESTAURANTS;
+        } else {
+          restList = restSnap.docs.map((d) => d.data().name).filter(Boolean);
+          if (!restList.length) restList = INITIAL_RESTAURANTS;
+        }
+        if (isMounted) setRestaurants(restList);
+
+        // AIRLINES
+        const airSnap = await getDocs(collection(db, "airlines"));
+        let airMap = {};
+        if (airSnap.empty) {
+          for (const [name, code] of Object.entries(INITIAL_AIRLINES)) {
+            await addDoc(collection(db, "airlines"), { name, code });
+          }
+          airMap = INITIAL_AIRLINES;
+        } else {
+          const pairs = airSnap.docs.map((d) => d.data()).filter((x) => x && x.name && x.code);
+          airMap = pairs.reduce((acc, { name, code }) => {
+            acc[name] = code;
+            return acc;
+          }, {});
+          if (!Object.keys(airMap).length) airMap = INITIAL_AIRLINES;
+        }
+        if (isMounted) setAirlines(airMap);
+
+        // TAX
+        const taxSnap = await getDocs(collection(db, "tax"));
+        if (!taxSnap.empty && isMounted) {
+          const tax = taxSnap.docs[0].data();
+          if (typeof tax.tpsPct === "number") setTpsPct(tax.tpsPct);
+          if (typeof tax.tvqPct === "number") setTvqPct(tax.tvqPct);
+        }
+
+        // VOUCHERS
+        const vouchersSnap = await getDocs(collection(db, "vouchers"));
+        const loadedVouchers = vouchersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (isMounted) {
+          setVouchers(loadedVouchers.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
+          // Align form defaults with freshly loaded lists
+          setForm((f) => ({
+            ...f,
+            restaurant: restList && restList.length ? restList[0] : INITIAL_RESTAURANTS[0],
+            airline: (() => {
+              const names = Object.keys(airMap);
+              return names && names.length ? names[0] : Object.keys(INITIAL_AIRLINES)[0];
+            })(),
+          }));
+        }
+      } catch (e) {
+        console.error("Initialization error:", e);
+      } finally {
+        if (isMounted) setIsInitializing(false);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const [changePasswordForm, setChangePasswordForm] = useState({
     oldPassword: "",
     newPassword: "",
@@ -163,10 +247,10 @@ export default function VoucherApp() {
       tps: computedTPS,
       tvq: computedTVQ,
       total: computedTotal,
-      id: crypto.randomUUID(),
     };
-    await addDoc(collection(db, "vouchers"), newRow);
-    setVouchers((arr) => [newRow, ...arr]);
+    const docRef = await addDoc(collection(db, "vouchers"), newRow);
+    const rowWithId = { id: docRef.id, ...newRow };
+    setVouchers((arr) => [rowWithId, ...arr]);
     resetForm();
   }
 
@@ -263,6 +347,14 @@ export default function VoucherApp() {
   }
 
   // --- Render ---
+  if (isInitializing) {
+    return (
+      <div className="loading-container">
+        <h2>Loading data…</h2>
+        <p>Initializing cloud data, please wait.</p>
+      </div>
+    );
+  }
   if (!currentUser) {
     return (
       <div className="login-container">
@@ -448,29 +540,37 @@ export default function VoucherApp() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((v) => (
-                <tr key={v.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedVouchers.includes(v.id)}
-                      onChange={() => toggleSelectVoucher(v.id)}
-                    />
-                  </td>
-                  <td>{v.date}</td>
-                  <td>{v.receipt}</td>
-                  <td>{v.restaurant}</td>
-                  <td>{v.airline}</td>
-                  <td>{formatCurrency(v.subtotal)}</td>
-                  <td>{formatCurrency(v.tps)}</td>
-                  <td>{formatCurrency(v.tvq)}</td>
-                  <td>{formatCurrency(v.total)}</td>
-                  <td>{v.status}</td>
-                  <td>
-                    <button onClick={() => removeVoucher(v.id)}>Archive</button>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan="11" style={{ textAlign: "center", color: "#777" }}>
+                    No vouchers found. Add a voucher or adjust filters.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((v) => (
+                  <tr key={v.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedVouchers.includes(v.id)}
+                        onChange={() => toggleSelectVoucher(v.id)}
+                      />
+                    </td>
+                    <td>{v.date}</td>
+                    <td>{v.receipt}</td>
+                    <td>{v.restaurant}</td>
+                    <td>{v.airline}</td>
+                    <td>{formatCurrency(v.subtotal)}</td>
+                    <td>{formatCurrency(v.tps)}</td>
+                    <td>{formatCurrency(v.tvq)}</td>
+                    <td>{formatCurrency(v.total)}</td>
+                    <td>{v.status}</td>
+                    <td>
+                      <button onClick={() => removeVoucher(v.id)}>Archive</button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
 
