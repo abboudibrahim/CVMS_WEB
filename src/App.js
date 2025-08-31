@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
-import "./App.css"; // Make sure to create this CSS file
+import "./App.css";
+import { db } from "./firebase"; // Make sure your firebase.js is set up
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
 
 // --- Constants ---
 const INITIAL_RESTAURANTS = ["Subway", "Paramount", "Pretzels", "LFD Bagel"];
@@ -8,9 +16,12 @@ const INITIAL_AIRLINES = {
   "Air France": "AFR",
   "British Airways": "BAW",
 };
-const STORAGE_KEY = "vouchers_mvp_complete";
-const TAX_KEY = "voucher_tax_settings_complete";
-const USERS_KEY = "voucher_app_users";
+const TABS = {
+  VOUCHERS: "Vouchers",
+  GENERAL_SETTINGS: "General Settings",
+  SETTINGS: "Settings",
+  AGING_REPORT: "Aging Report",
+};
 
 // --- Utility Functions ---
 function formatCurrency(n) {
@@ -34,14 +45,6 @@ function checkPasswordStrength(pwd) {
   return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(pwd);
 }
 
-// --- Tabs ---
-const TABS = {
-  VOUCHERS: "Vouchers",
-  GENERAL_SETTINGS: "General Settings",
-  SETTINGS: "Settings",
-  AGING_REPORT: "Aging Report",
-};
-
 // --- Main App ---
 export default function VoucherApp() {
   const [restaurants, setRestaurants] = useState(INITIAL_RESTAURANTS);
@@ -64,15 +67,9 @@ export default function VoucherApp() {
   const [tpsPct, setTpsPct] = useState(5.0);
   const [tvqPct, setTvqPct] = useState(9.975);
 
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem(USERS_KEY);
-    if (saved) return JSON.parse(saved);
-    const defaultAdmin = [
-      { username: "admin", password: "Admin123", role: "admin" },
-    ];
-    localStorage.setItem(USERS_KEY, JSON.stringify(defaultAdmin));
-    return defaultAdmin;
-  });
+  const [users, setUsers] = useState([
+    { username: "admin", password: "Admin123", role: "admin" },
+  ]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [changePasswordForm, setChangePasswordForm] = useState({
@@ -142,37 +139,6 @@ export default function VoucherApp() {
     }
   });
 
-  useEffect(() => {
-    try {
-      setVouchers(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"));
-    } catch {}
-    try {
-      setArchivedVouchers(
-        JSON.parse(localStorage.getItem("archived_vouchers") || "[]")
-      );
-    } catch {}
-    try {
-      const saved = JSON.parse(localStorage.getItem(TAX_KEY) || null);
-      if (saved) {
-        setTpsPct(saved.tpsPct);
-        setTvqPct(saved.tvqPct);
-      }
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(vouchers));
-  }, [vouchers]);
-  useEffect(() => {
-    localStorage.setItem("archived_vouchers", JSON.stringify(archivedVouchers));
-  }, [archivedVouchers]);
-  useEffect(() => {
-    localStorage.setItem(TAX_KEY, JSON.stringify({ tpsPct, tvqPct }));
-  }, [tpsPct, tvqPct]);
-  useEffect(() => {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  }, [users]);
-
   // --- Voucher Functions ---
   function resetForm() {
     setForm({
@@ -186,15 +152,11 @@ export default function VoucherApp() {
     });
   }
 
-  function addVoucher() {
+  async function addVoucher() {
     if (!form.date || !form.receipt || !form.airline || !form.subtotal) {
       alert("Please fill required fields.");
       return;
     }
-    const dup = vouchers.find(
-      (v) => v.receipt === form.receipt && v.restaurant === form.restaurant
-    );
-    if (dup && !confirm("Duplicate receipt exists. Add anyway?")) return;
     const newRow = {
       ...form,
       invoiceNumber: invoicePreview,
@@ -203,6 +165,7 @@ export default function VoucherApp() {
       total: computedTotal,
       id: crypto.randomUUID(),
     };
+    await addDoc(collection(db, "vouchers"), newRow);
     setVouchers((arr) => [newRow, ...arr]);
     resetForm();
   }
@@ -280,85 +243,6 @@ export default function VoucherApp() {
     setSelectedVouchers([]);
   }
 
-  function exportVouchersCSV() {
-    const rows = [
-      [
-        "Date",
-        "Receipt",
-        "Restaurant",
-        "Airline",
-        "Subtotal",
-        "TPS",
-        "TVQ",
-        "Total",
-        "Status",
-      ],
-    ];
-    vouchers.forEach((v) =>
-      rows.push([
-        v.date,
-        v.receipt,
-        v.restaurant,
-        v.airline,
-        formatCurrency(v.subtotal),
-        formatCurrency(v.tps),
-        formatCurrency(v.tvq),
-        formatCurrency(v.total),
-        v.status,
-      ])
-    );
-    downloadCSV(rows, "AllVouchers.csv");
-  }
-
-  function importVouchersCSV(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const lines = event.target.result.split("\n").map((l) => l.split(","));
-      lines.slice(1).forEach((cols) => {
-        const [date, receipt, restaurant, airline, subtotal] = cols.map((c) =>
-          c.trim()
-        );
-        if (date && receipt && restaurant && airline && subtotal) {
-          if (
-            vouchers.find(
-              (v) => v.receipt === receipt && v.restaurant === restaurant
-            )
-          )
-            return;
-          const numericSubtotal = parseFloat(subtotal);
-          const restCode = restaurant.substring(0, 3).toUpperCase();
-          const airlineCode =
-            airlines[airline] || airline.substring(0, 3).toUpperCase();
-          const month = date.split("-")[1];
-          const year = date.split("-")[0];
-          const invoiceNumber = `${restCode}${airlineCode}${month}${year.slice(
-            -2
-          )}`;
-          const newRow = {
-            date,
-            receipt,
-            restaurant,
-            airline,
-            subtotal: numericSubtotal,
-            tps: +(numericSubtotal * (tpsPct / 100)).toFixed(2),
-            tvq: +(numericSubtotal * (tvqPct / 100)).toFixed(2),
-            total: +(
-              numericSubtotal *
-              (1 + tpsPct / 100 + tvqPct / 100)
-            ).toFixed(2),
-            invoiceNumber,
-            status: "Unbilled",
-            id: crypto.randomUUID(),
-          };
-          setVouchers((prev) => [newRow, ...prev]);
-        }
-      });
-    };
-    reader.readAsText(file);
-  }
-
   // --- Login & User Management ---
   function handleLogin() {
     const username = loginForm.username.trim();
@@ -378,6 +262,7 @@ export default function VoucherApp() {
     setCurrentUser(null);
   }
 
+  // --- Render ---
   if (!currentUser) {
     return (
       <div className="login-container">
@@ -425,64 +310,133 @@ export default function VoucherApp() {
           </button>
         ))}
       </nav>
-
-      {/* ------------------ Vouchers Tab ------------------ */}
+      {/* VOUCHERS TAB */}
       {activeTab === TABS.VOUCHERS && (
         <div className="vouchers-tab">
-          <h3>Add Voucher</h3>
+          <h3>Vouchers</h3>
+
+          {/* Voucher Entry Form */}
           <div className="voucher-form">
+            <label>
+              Date:
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, date: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Receipt #:
+              <input
+                value={form.receipt}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, receipt: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Restaurant:
+              <select
+                value={form.restaurant}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, restaurant: e.target.value }))
+                }
+              >
+                {restaurants.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Airline:
+              <select
+                value={form.airline}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, airline: e.target.value }))
+                }
+              >
+                {Object.keys(airlines).map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Subtotal:
+              <input
+                type="number"
+                value={form.subtotal}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, subtotal: e.target.value }))
+                }
+              />
+            </label>
+            <div className="invoice-preview">
+              Invoice #: <strong>{invoicePreview}</strong>
+            </div>
+            <button onClick={addVoucher}>Add Voucher</button>
+            <button onClick={resetForm}>Reset Form</button>
+          </div>
+
+          {/* Filter Section */}
+          <div className="voucher-filters">
+            <h4>Filters</h4>
             <input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+              placeholder="Airline"
+              value={qAirline}
+              onChange={(e) => setQAirline(e.target.value)}
+            />
+            <input
+              placeholder="Restaurant"
+              value={qRestaurant}
+              onChange={(e) => setQRestaurant(e.target.value)}
             />
             <input
               placeholder="Receipt #"
-              value={form.receipt}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, receipt: e.target.value }))
-              }
+              value={qReceipt}
+              onChange={(e) => setQReceipt(e.target.value)}
             />
-            <select
-              value={form.restaurant}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, restaurant: e.target.value }))
+            <label>
+              From:
+              <input
+                type="date"
+                value={dateRange.from}
+                onChange={(e) =>
+                  setDateRange((d) => ({ ...d, from: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              To:
+              <input
+                type="date"
+                value={dateRange.to}
+                onChange={(e) =>
+                  setDateRange((d) => ({ ...d, to: e.target.value }))
+                }
+              />
+            </label>
+            <button
+              onClick={() =>
+                setQAirline("") && setQRestaurant("") && setQReceipt("")
               }
             >
-              {restaurants.map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-            <select
-              value={form.airline}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, airline: e.target.value }))
-              }
-            >
-              {Object.keys(airlines).map((a) => (
-                <option key={a}>{a}</option>
-              ))}
-            </select>
-            <input
-              placeholder="Subtotal"
-              value={form.subtotal}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, subtotal: e.target.value }))
-              }
-            />
-            <div className="invoice-preview">Invoice #: {invoicePreview}</div>
-            <button onClick={addVoucher} className="add-btn">
-              Add Voucher
+              Clear Filters
             </button>
           </div>
 
-          <h3>Voucher List</h3>
+          {/* Voucher Table */}
           <table className="voucher-table">
             <thead>
               <tr>
-                <th></th>
+                <th>Select</th>
                 <th>Date</th>
-                <th>Receipt</th>
+                <th>Receipt #</th>
                 <th>Restaurant</th>
                 <th>Airline</th>
                 <th>Subtotal</th>
@@ -490,7 +444,6 @@ export default function VoucherApp() {
                 <th>TVQ</th>
                 <th>Total</th>
                 <th>Status</th>
-                <th>Invoice #</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -513,102 +466,141 @@ export default function VoucherApp() {
                   <td>{formatCurrency(v.tvq)}</td>
                   <td>{formatCurrency(v.total)}</td>
                   <td>{v.status}</td>
-                  <td>{v.invoiceNumber}</td>
                   <td>
-                    <button
-                      onClick={() => removeVoucher(v.id)}
-                      className="archive-btn"
-                    >
-                      Archive
-                    </button>
+                    <button onClick={() => removeVoucher(v.id)}>Archive</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div className="voucher-actions">
-            <button onClick={generateInvoice}>Generate Invoice</button>
-            <button onClick={exportVouchersCSV}>Export CSV</button>
-            <input type="file" accept=".csv" onChange={importVouchersCSV} />
-          </div>
+          {/* Invoice Generation */}
+          <button
+            onClick={generateInvoice}
+            disabled={selectedVouchers.length === 0}
+          >
+            Generate Invoice for Selected
+          </button>
         </div>
       )}
 
-      {/* ------------------ General Settings Tab ------------------ */}
+      {/* GENERAL SETTINGS TAB */}
       {activeTab === TABS.GENERAL_SETTINGS && (
-        <div className="general-settings-tab">
-          <h3>Tax Settings</h3>
-          <div>
+        <div className="settings-tab">
+          <h3>General Settings</h3>
+          <div className="tax-settings">
             <label>
-              TPS %:{" "}
+              TPS %:
               <input
                 type="number"
                 value={tpsPct}
                 onChange={(e) => setTpsPct(parseFloat(e.target.value))}
               />
             </label>
-          </div>
-          <div>
             <label>
-              TVQ %:{" "}
+              TVQ %:
               <input
                 type="number"
                 value={tvqPct}
                 onChange={(e) => setTvqPct(parseFloat(e.target.value))}
               />
             </label>
+            <button
+              onClick={async () => {
+                const taxRef = collection(db, "tax");
+                const snapshot = await getDocs(taxRef);
+                if (!snapshot.empty) {
+                  await updateDoc(doc(db, "tax", snapshot.docs[0].id), {
+                    tpsPct,
+                    tvqPct,
+                  });
+                } else {
+                  await addDoc(taxRef, { tpsPct, tvqPct });
+                }
+                alert("Tax settings saved!");
+              }}
+            >
+              Save Tax Settings
+            </button>
           </div>
 
-          <h3 style={{ marginTop: 20 }}>Add Restaurant</h3>
-          <input
-            placeholder="New Restaurant"
-            value={newRestaurant}
-            onChange={(e) => setNewRestaurant(e.target.value)}
-          />
-          <button
-            onClick={() => {
-              if (newRestaurant && !restaurants.includes(newRestaurant)) {
-                setRestaurants([...restaurants, newRestaurant]);
-                setNewRestaurant("");
-              }
-            }}
-          >
-            Add
-          </button>
-
-          <h3 style={{ marginTop: 20 }}>Add Airline</h3>
-          <input
-            placeholder="Airline Name"
-            value={newAirline}
-            onChange={(e) => setNewAirline(e.target.value)}
-          />
-          <input
-            placeholder="Airline Code"
-            value={newAirlineCode}
-            onChange={(e) => setNewAirlineCode(e.target.value)}
-          />
-          <button
-            onClick={() => {
-              if (newAirline && newAirlineCode) {
-                setAirlines({
-                  ...airlines,
-                  [newAirline]: newAirlineCode.toUpperCase(),
+          <div className="restaurant-settings">
+            <h4>Restaurants</h4>
+            <ul>
+              {restaurants.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+            <input
+              placeholder="New Restaurant"
+              value={newRestaurant}
+              onChange={(e) => setNewRestaurant(e.target.value)}
+            />
+            <button
+              onClick={async () => {
+                if (!newRestaurant) return;
+                await addDoc(collection(db, "restaurants"), {
+                  name: newRestaurant,
                 });
+                setRestaurants((prev) => [...prev, newRestaurant]);
+                setNewRestaurant("");
+              }}
+            >
+              Add Restaurant
+            </button>
+          </div>
+
+          <div className="airline-settings">
+            <h4>Airlines</h4>
+            <ul>
+              {Object.entries(airlines).map(([name, code]) => (
+                <li key={name}>
+                  {name} - {code}
+                </li>
+              ))}
+            </ul>
+            <input
+              placeholder="New Airline"
+              value={newAirline}
+              onChange={(e) => setNewAirline(e.target.value)}
+            />
+            <input
+              placeholder="Code"
+              value={newAirlineCode}
+              onChange={(e) => setNewAirlineCode(e.target.value.toUpperCase())}
+            />
+            <button
+              onClick={async () => {
+                if (!newAirline || !newAirlineCode) return;
+                await addDoc(collection(db, "airlines"), {
+                  name: newAirline,
+                  code: newAirlineCode,
+                });
+                setAirlines((prev) => ({
+                  ...prev,
+                  [newAirline]: newAirlineCode,
+                }));
                 setNewAirline("");
                 setNewAirlineCode("");
-              }
-            }}
-          >
-            Add
-          </button>
+              }}
+            >
+              Add Airline
+            </button>
+          </div>
         </div>
       )}
 
-      {/* ------------------ Settings Tab (Admin Only) ------------------ */}
+      {/* SETTINGS / ADMIN TAB */}
       {activeTab === TABS.SETTINGS && currentUser.role === "admin" && (
-        <div className="settings-tab">
+        <div className="admin-tab">
           <h3>User Management</h3>
+          <ul>
+            {users.map((u, i) => (
+              <li key={i}>
+                {u.username} ({u.role})
+              </li>
+            ))}
+          </ul>
           <input
             placeholder="Username"
             value={newUsername}
@@ -628,57 +620,38 @@ export default function VoucherApp() {
             <option value="admin">Admin</option>
           </select>
           <button
-            onClick={() => {
-              if (newUsername && checkPasswordStrength(newUserPassword)) {
-                setUsers([
-                  ...users,
-                  {
-                    username: newUsername,
-                    password: newUserPassword,
-                    role: newUserRole,
-                  },
-                ]);
-                setNewUsername("");
-                setNewUserPassword("");
-                setNewUserRole("user");
-              } else {
+            onClick={async () => {
+              if (!newUsername || !newUserPassword) return;
+              if (!checkPasswordStrength(newUserPassword)) {
                 alert(
-                  "Invalid username or password (min 8 chars, 1 uppercase, 1 lowercase, 1 number)."
+                  "Password must be 8+ chars, with uppercase, lowercase, and number"
                 );
+                return;
               }
+              const newUser = {
+                username: newUsername,
+                password: newUserPassword,
+                role: newUserRole,
+              };
+              await addDoc(collection(db, "users"), newUser);
+              setUsers((prev) => [...prev, newUser]);
+              setNewUsername("");
+              setNewUserPassword("");
             }}
           >
             Add User
           </button>
 
-          <h4>Existing Users</h4>
-          <ul>
-            {users.map((u) => (
-              <li key={u.username}>
-                {u.username} ({u.role}){" "}
-                {u.username !== currentUser.username && (
-                  <button
-                    onClick={() =>
-                      setUsers(users.filter((x) => x.username !== u.username))
-                    }
-                  >
-                    Delete
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-
-          <h3 style={{ marginTop: 20 }}>Change Password</h3>
+          <h3>Change Your Password</h3>
           <input
             placeholder="Old Password"
             type="password"
             value={changePasswordForm.oldPassword}
             onChange={(e) =>
-              setChangePasswordForm({
-                ...changePasswordForm,
+              setChangePasswordForm((f) => ({
+                ...f,
                 oldPassword: e.target.value,
-              })
+              }))
             }
           />
           <input
@@ -686,10 +659,10 @@ export default function VoucherApp() {
             type="password"
             value={changePasswordForm.newPassword}
             onChange={(e) =>
-              setChangePasswordForm({
-                ...changePasswordForm,
+              setChangePasswordForm((f) => ({
+                ...f,
                 newPassword: e.target.value,
-              })
+              }))
             }
           />
           <input
@@ -697,44 +670,46 @@ export default function VoucherApp() {
             type="password"
             value={changePasswordForm.confirmNew}
             onChange={(e) =>
-              setChangePasswordForm({
-                ...changePasswordForm,
+              setChangePasswordForm((f) => ({
+                ...f,
                 confirmNew: e.target.value,
-              })
+              }))
             }
           />
           <button
-            onClick={() => {
-              if (changePasswordForm.oldPassword !== currentUser.password) {
+            onClick={async () => {
+              const { oldPassword, newPassword, confirmNew } =
+                changePasswordForm;
+              if (oldPassword !== currentUser.password) {
                 alert("Old password incorrect");
                 return;
               }
-              if (
-                changePasswordForm.newPassword !== changePasswordForm.confirmNew
-              ) {
+              if (newPassword !== confirmNew) {
                 alert("New passwords do not match");
                 return;
               }
-              if (!checkPasswordStrength(changePasswordForm.newPassword)) {
-                alert("Password too weak");
+              if (!checkPasswordStrength(newPassword)) {
+                alert(
+                  "Password must be 8+ chars, with uppercase, lowercase, and number"
+                );
                 return;
               }
-              const updatedUsers = users.map((u) =>
-                u.username === currentUser.username
-                  ? { ...u, password: changePasswordForm.newPassword }
-                  : u
+              const userSnap = await getDocs(collection(db, "users"));
+              const userDoc = userSnap.docs.find(
+                (d) => d.data().username === currentUser.username
               );
-              setUsers(updatedUsers);
-              setCurrentUser({
-                ...currentUser,
-                password: changePasswordForm.newPassword,
-              });
-              setChangePasswordForm({
-                oldPassword: "",
-                newPassword: "",
-                confirmNew: "",
-              });
-              alert("Password updated");
+              if (userDoc) {
+                await updateDoc(doc(db, "users", userDoc.id), {
+                  password: newPassword,
+                });
+                setCurrentUser((u) => ({ ...u, password: newPassword }));
+                alert("Password changed!");
+                setChangePasswordForm({
+                  oldPassword: "",
+                  newPassword: "",
+                  confirmNew: "",
+                });
+              }
             }}
           >
             Change Password
@@ -742,28 +717,28 @@ export default function VoucherApp() {
         </div>
       )}
 
-      {/* ------------------ Aging Report Tab ------------------ */}
+      {/* AGING REPORT TAB */}
       {activeTab === TABS.AGING_REPORT && (
-        <div className="aging-report-tab">
-          <h3>Aging Report (Unbilled Vouchers)</h3>
-          <ul>
-            {Object.entries(agingBuckets).map(([bucket, total]) => (
-              <li key={bucket}>
-                {bucket} days: ${total.toFixed(2)}
-              </li>
-            ))}
-          </ul>
-          <button
-            onClick={() => {
-              const rows = [["Aging Bucket", "Total"]];
-              Object.entries(agingBuckets).forEach(([bucket, total]) =>
-                rows.push([bucket, total])
-              );
-              downloadCSV(rows, "AgingReport.csv");
-            }}
-          >
-            Export CSV
-          </button>
+        <div className="aging-tab">
+          <h3>Aging Report</h3>
+          <table className="aging-table">
+            <thead>
+              <tr>
+                <th>0-30 Days</th>
+                <th>31-60 Days</th>
+                <th>61-90 Days</th>
+                <th>90+ Days</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{formatCurrency(agingBuckets["0-30"])}</td>
+                <td>{formatCurrency(agingBuckets["31-60"])}</td>
+                <td>{formatCurrency(agingBuckets["61-90"])}</td>
+                <td>{formatCurrency(agingBuckets["90+"])}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </div>
