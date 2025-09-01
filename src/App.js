@@ -471,8 +471,8 @@ export default function VoucherApp() {
             <div className="invoice-preview">
               Invoice #: <strong>{invoicePreview}</strong>
             </div>
-            <button onClick={addVoucher}>Add Voucher</button>
-            <button onClick={resetForm}>Reset Form</button>
+            <button className="add-btn" onClick={addVoucher}>Add Voucher</button>
+            <button className="secondary-btn" onClick={resetForm}>Reset Form</button>
           </div>
 
           {/* Filter Section */}
@@ -514,9 +514,13 @@ export default function VoucherApp() {
               />
             </label>
             <button
-              onClick={() =>
-                setQAirline("") && setQRestaurant("") && setQReceipt("")
-              }
+              className="secondary-btn"
+              onClick={() => {
+                setQAirline("");
+                setQRestaurant("");
+                setQReceipt("");
+                setDateRange({ from: "", to: "" });
+              }}
             >
               Clear Filters
             </button>
@@ -566,7 +570,7 @@ export default function VoucherApp() {
                     <td>{formatCurrency(v.total)}</td>
                     <td>{v.status}</td>
                     <td>
-                      <button onClick={() => removeVoucher(v.id)}>Archive</button>
+                      <button className="archive-btn" onClick={() => removeVoucher(v.id)}>Archive</button>
                     </td>
                   </tr>
                 ))
@@ -576,6 +580,7 @@ export default function VoucherApp() {
 
           {/* Invoice Generation */}
           <button
+            className="add-btn"
             onClick={generateInvoice}
             disabled={selectedVouchers.length === 0}
           >
@@ -606,6 +611,7 @@ export default function VoucherApp() {
               />
             </label>
             <button
+              className="add-btn"
               onClick={async () => {
                 const taxRef = collection(db, "tax");
                 const snapshot = await getDocs(taxRef);
@@ -637,6 +643,7 @@ export default function VoucherApp() {
               onChange={(e) => setNewRestaurant(e.target.value)}
             />
             <button
+              className="add-btn"
               onClick={async () => {
                 if (!newRestaurant) return;
                 await addDoc(collection(db, "restaurants"), {
@@ -670,6 +677,7 @@ export default function VoucherApp() {
               onChange={(e) => setNewAirlineCode(e.target.value.toUpperCase())}
             />
             <button
+              className="add-btn"
               onClick={async () => {
                 if (!newAirline || !newAirlineCode) return;
                 await addDoc(collection(db, "airlines"), {
@@ -720,6 +728,7 @@ export default function VoucherApp() {
             <option value="admin">Admin</option>
           </select>
           <button
+            className="add-btn"
             onClick={async () => {
               if (!newUsername || !newUserPassword) return;
               if (!checkPasswordStrength(newUserPassword)) {
@@ -777,6 +786,7 @@ export default function VoucherApp() {
             }
           />
           <button
+            className="add-btn"
             onClick={async () => {
               const { oldPassword, newPassword, confirmNew } =
                 changePasswordForm;
