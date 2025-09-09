@@ -1,17 +1,58 @@
-# CVMS_WEB
+# CVMS - Voucher Management System
 
-Comprehensive documentation of the project's architecture, structure, and runtime behavior.
+A modern, secure, and scalable Voucher Management System built with React and Firebase.
 
-## Overview
-CVMS_WEB is a client-side Voucher Management application built with React. It provides:
-- Voucher creation and management with taxes and totals
-- Basic user management (admin/user) and login
-- Configurable restaurants and airlines lists
-- Tax settings (TPS/TVQ) with derived totals and invoice preview
-- Voucher archival and aging report
-- Export as CSV
+## 🚀 Features
 
-The application runs in the browser and persists data to Firebase Firestore (no custom backend server).
+### Core Functionality
+- **Voucher Management**: Create, edit, archive, and manage vouchers
+- **Tax Calculations**: Automatic TPS/TVQ calculations with configurable rates
+- **Invoice Generation**: Generate and export invoices as CSV
+- **Aging Reports**: Track outstanding amounts by age buckets
+- **Advanced Filtering**: Search and filter vouchers by multiple criteria
+
+### Security & Authentication
+- **Firebase Authentication**: Secure email/password authentication
+- **Role-based Access**: Admin and user roles with different permissions
+- **Environment Variables**: Secure configuration management
+- **Firestore Security Rules**: Proper data access controls
+
+### User Experience
+- **Modern UI**: Clean, responsive design with dark theme
+- **Real-time Updates**: Live tax calculations and previews
+- **Error Handling**: Comprehensive error messages and validation
+- **Loading States**: Visual feedback during operations
+- **Mobile Responsive**: Works on all device sizes
+
+## 🏗️ Architecture
+
+### Technology Stack
+- **Frontend**: React 18 with Hooks and Context API
+- **Backend**: Firebase Firestore (NoSQL database)
+- **Authentication**: Firebase Auth
+- **Styling**: Custom CSS with modern design patterns
+- **Build Tool**: Create React App
+
+### Project Structure
+```
+src/
+├── components/          # Reusable UI components
+│   ├── Login.js
+│   ├── VoucherForm.js
+│   ├── VoucherTable.js
+│   ├── Filters.js
+│   ├── GeneralSettings.js
+│   ├── AdminSettings.js
+│   └── AgingReport.js
+├── contexts/            # React Context providers
+│   ├── AuthContext.js
+│   └── AppContext.js
+├── utils/               # Utility functions
+│   └── index.js
+├── constants/           # Application constants
+│   └── index.js
+└── App.js              # Main application component
+```
 
 ## High-level Architecture
 - Runtime: React 18, create-react-app (react-scripts 5)
